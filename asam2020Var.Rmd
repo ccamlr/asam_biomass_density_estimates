@@ -29,7 +29,7 @@ To load the time series data from excel put all the data files in one directory.
 
 ```{r usrVar}
 ## read the csv file
-dat <- read.csv("asam2020Var.csv", stringsAsFactors = FALSE)
+dat <- read.csv("ASAM_metadata_2021_v2.csv", stringsAsFactors = FALSE)
 
 
 ## remove the '.' from the file names
