@@ -1,0 +1,309 @@
+---
+title: "Krill density time series"
+author: "Cox, M.J., Reid, K."
+date: "22/06/2020"
+output: bookdown::html_document2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+This is a preliminary analysis of the krill density time series made up of data submitted to CCAMLR WG-ASAM-20.
+
+## Set-up
+Load ```R``` packages:
+```{r loadpkg}
+suppressPackageStartupMessages({library(readxl)
+library(tibble)
+library(dplyr)
+library(zoo)
+library(ggplot2)
+  library(cowplot)})
+
+```
+
+Load data and user defined variables:
+To load the time series data from excel put all the data files in one directory.  The directory is specified in the following code chunk ```data.files$wd```.
+
+```{r usrVar}
+data.files=list(
+wd='c:\\Users\\marti\\Documents\\ASAM2020\\data\\', 
+meta=tibble(locName=c('SG',
+                      'SO',
+                      'WAP',
+                      'SSH',
+                      'WAP2'),
+            fn=c('BAS_Antarctic_krill_density_South_Georgia_20200615.xlsx',
+            'IMR_Antarctic_krill_density_SouthOrkneys_2020.xlsx',
+            'WG_EMM_krill_biomass_time_series_information_GW.xlsx',
+            'WG_EMM_krill_biomass_time_series_information_China.xlsx',
+            'WG_EMM_krill_biomass_time_series_information_PS112-2-3.xlsx')))
+
+
+```
+
+In the above code chunk, the object ```data.files``` is a ``list`` with two elements: ```$wd``` is the directory where the excel krill density files are found (this could be changed to a server location) and ```$meta``` gives a simple file designator name ```$locName``` and ```$fn``` ia the Excel file name.
+
+Now we can load the data into the ```R``` workspace:
+
+```{r loadData,message=FALSE,warning=FALSE}
+dat=lapply(as.list(paste0(data.files$wd,data.files$meta$fn)),function(x) readxl::read_xlsx(x,skip=2))
+names(dat)=data.files$meta$locName
+
+```
+Each file is now in an element of the ```dat``` ```list``` object.
+
+Now we'll look at the number of rows and columns in each file:
+
+```{r size}
+dat=lapply(as.list(paste0(data.files$wd,data.files$meta$fn)),function(x) readxl::read_xlsx(x,skip=2))
+names(dat)=data.files$meta$locName
+
+```
+
+```{r sizeTable,echo=FALSE,message=FALSE}
+dispSize=tibble(locName=data.files$meta$locName,nrow=sapply(dat,nrow),
+             ncol=sapply(dat,ncol))
+
+knitr::kable(dispSize,caption = 'Size of each of the data files')
+
+```
+
+
+From Table \@ref(tab:sizeTable) we see that the 'SG' file has two extra columns, so we remove remove those to enable the data to be merged together:
+
+```{r rmCols}
+#remove extra columns in SG
+dat[[1]]=dat[[1]][,-c(23,24)]
+```
+
+Now we merge the data together into a single ```R``` object:
+
+```{r mergeDat}
+dat=do.call('rbind.data.frame',dat)
+nall=nrow(dat) #number of surveys
+
+```
+The entire data set has ```r nall``` rows.
+
+## Filter data
+In the following sets we remove some rows from the data and provide the reason for removing the data:
+
+```{r filtData}
+filterStep=c('None, this is all the data','remove blank densities')
+## remove blank densities
+
+dat=dat %>% filter(!is.na(`Density estimate (g m-2)`))
+nV=c(nall,nrow(dat))
+
+filterStep=c(filterStep,'Remove blank CV')
+dat=dat %>% filter(!is.na(`CV of density estimate (%)`))
+nV=c(nV,nrow(dat))
+
+## remove unspecified variance estimate
+filterStep=c(filterStep,'Remove blank variance est. meth.')
+dat=dat %>% filter(!is.na(`CV estimation method`))
+nV=c(nV,nrow(dat))
+```
+
+The data filtering is summarised in Table \@ref(tab:filtTab).
+
+```{r filtTab,echo=FALSE}
+nTab=tibble(filter=filterStep,nRm=nV)
+names(nTab)=c('Filter step','Number of observations remaining')
+knitr::kable(nTab,caption='Data filtering steps and remaining number of samples.')
+```
+
+## Use a single contributor per data set
+Here we use a single contributor per data set (row in ```dat```):
+
+```{r singleContrib}
+ind=grep(',',dat$Contributor)
+dat$Contributor[ind]='IMR'
+
+dat$Contributor[dat$Contributor=='IMR']='Norway'
+```
+
+## Create a time stamp
+Here we create a time stamp to help with plotting:
+
+```{r timeStamp}
+dat$timeStamp=zoo::as.yearmon( paste(dat$`Month (MON)`,dat$`Year (yyyy)`),format='%b %Y')
+```
+
+## Prepare data for plotting
+```{r prepData}
+#make numeric density estimates:
+dat$`Density estimate (g m-2)`=as.numeric(dat$`Density estimate (g m-2)`)
+#make factor variable for subarea:
+dat$SubareaF=paste0('Subarea',dat$Subarea)
+
+dat$SubareaF=factor(paste0('Subarea',dat$Subarea),levels=paste0('Subarea',c(48.1,48.2,48.3)))
+
+# standard deviation of rho   
+dat$SD=dat$`Density estimate (g m-2)` * 0.01 * dat$`CV of density estimate (%)`
+# variance of rho
+  dat$Var=dat$SD**2
+# 95% confidence assuming normal distribution:  
+  dat$LB=qnorm(p=0.025,mean=dat$`Density estimate (g m-2)`,sd=dat$SD)
+  dat$UB=qnorm(p=0.975,mean=dat$`Density estimate (g m-2)`,sd=dat$SD)
+               
+#prep month:
+  dat$mon=dat$`Month (MON)`
+dat$monF=factor(dat$mon,levels=month.abb)
+  
+```
+
+# Results
+(Table \@ref(tab:subAreaByNation))
+
+```{r subAreaByNation,echo=FALSE}
+knitr::kable(table(dat$Subarea,dat$Contributor), caption='Area by contributor')
+```
+
+## Time series plots
+
+Number of surveys for each year by subarea (Fig. \@ref(fig:sampleSize))
+
+```{r sampleSize,fig.cap='Number of surveys carried outduring each year by subarea.',echo=FALSE}
+
+sampSize= dat %>% group_by(SubareaF,`Year (yyyy)`) %>%
+  summarise(n=n())
+
+psize=ggplot(data=sampSize,aes(x=`Year (yyyy)`,
+                               y=n,
+                               group=SubareaF)) +
+  geom_point() + facet_wrap(~SubareaF,ncol=1) +
+  theme_minimal() + xlab('Year') + 
+  ylab('Number of surveys')
+
+
+psize=ggdraw(psize) + 
+  draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
+print(psize)
+```
+
+```{r basePlot,echo=FALSE}
+p1=ggplot(dat,aes(x=timeStamp,
+                  y=`Density estimate (g m-2)`,
+                  group=SubareaF,colour=SubareaF,
+                  shape=Contributor)) + 
+  geom_point(alpha=0.8) + 
+ xlab('Year') +
+  theme_minimal() + 
+  facet_wrap(~SubareaF,ncol=1) +
+  ylab(bquote('Areal krill biomass density, '~gm^-2)) + 
+   labs(colours='Subarea') 
+```
+
+```{r normCI,echo=FALSE,fig.cap='Krill density time series by subarea.  The shaded area is the 95% confidence interval assuming normally distributed errors.  The lower bound of the 95% confidence interval is sometimes less than zero which is not ideal for representing densitty. NB y-axis limits are set  -50 to 300 gm-2'}
+pNCI=p1+geom_errorbar(aes(x=timeStamp,ymin=LB,ymax=UB,colour=SubareaF,group=SubareaF,fill=SubareaF),alpha=0.8) +
+  #geom_ribbon(aes(x=timeStamp,ymin=LB,ymax=UB,colour=SubareaF,group=SubareaF,fill=SubareaF),alpha=0.2)  +
+  geom_hline(yintercept=0,colour='grey') +  coord_cartesian(ylim=c(-50,300)) + NULL #ylim(c(0,260)) 
+
+pNCI=ggdraw(pNCI) + 
+  draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
+print(pNCI)
+
+```
+
+
+We now represent the distribution of densities for each survey using log-normal confidence intervals.  We use ```R``` code *Borchers, D. L., & Cox, M. J. (2017). Distance sampling detection functions: 2D or not 2D?. Biometrics, 73(2), 593-602.*:
+
+```{r logNorm}
+lnci.nmin=function(stat,cv,stat.min=0,interval=interval){
+  q=Mod(qnorm((1-interval)/2,0,1))
+  varNhat=(stat*cv)^2
+  cfactor=exp(q*sqrt(log(1+varNhat/(stat-stat.min)^2)))
+  lower=stat.min+(stat-stat.min)/cfactor
+  upper=stat.min+(stat-stat.min)*cfactor
+  return(list(lower=lower,upper=upper))
+}
+```
+
+and run ```lnci.nmin()```:
+
+```{r logNormRun}
+
+logCI=lnci.nmin(stat=dat$`Density estimate (g m-2)`,
+          cv=dat$`CV of density estimate (%)`/100,
+          interval=0.95)
+dat$LBlnn=logCI$lower
+dat$UBlnn=logCI$upper
+
+```
+
+
+```{r logNplot,echo=FALSE,fig.cap='Krill density time series by subarea.  The shaded areas are the 95% confidence interval assuming a log-normal error distribution.  NB y-axis limits are set  [-50 to 300 gm-2]'}
+p4=p1+geom_errorbar(data=dat,
+                 aes(x=timeStamp,ymin=LBlnn,ymax=UBlnn,
+                   colour=SubareaF,group=SubareaF),
+                   alpha=0.8) +
+  #geom_ribbon(data=dat,aes(x=timeStamp,ymin=LBlnn,ymax=UBlnn,
+                   #colour=SubareaF,group=SubareaF,
+                   #fill=SubareaF),alpha=0.2) +
+  coord_cartesian(ylim=c(-50, 300)) + 
+  geom_hline(yintercept=0,col='grey')
+
+p5=ggdraw(p4) + 
+  draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
+print(p5)
+
+ggsave('c:\\Users\\marti\\Documents\\ASAM2020\\SubareaLogNormal95pcConfidence.png')
+```
+## Changes in CV with month and equipment
+Krill behaviour, e.g. swarming and environmental preference, will influence CV,i.e. evenly spaced krill will reduce CV, whereas a single massive 'super' swarm will greatly increase CV.  It is reasonable to see if CV changes with observation month, so we take a look at the in Fig. \@ref(fig:CVmonth).
+
+```{r CVmonth,echo=FALSE,fig.cap='Coefficient of variation by subarea and observation month. Sample size for each boxplot is given.'}
+
+p6=ggplot(dat,aes(x=monF,
+                  y=`CV of density estimate (%)`,
+                  group=monF)) + 
+  geom_boxplot() + facet_wrap(~SubareaF,ncol=1) +
+  stat_summary(fun = median, fun.max = length,
+                geom = "text", aes(label = ..ymax..), vjust = -1) + theme_minimal() + xlab('Month')
+
+p6=ggdraw(p6) + 
+  draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
+print(p6)
+
+ggsave('c:\\Users\\marti\\Documents\\ASAM2020\\SubareaCVByMonth.png')
+```
+
+And now by Echosounder:
+```{r boxES,echo=FALSE,fig.cap='Coefficient of variation by subarea and Echosounder type.  Sample size for each boxplot is given.'}
+
+p7=ggplot(dat,aes(x=`Echosounder model`,
+                  y=`CV of density estimate (%)`,
+                  group=`Echosounder model`)) + 
+  geom_boxplot() + facet_wrap(~SubareaF,ncol=1) +
+  stat_summary(fun = median, fun.max = length,
+                geom = "text", aes(label = ..ymax..), vjust = -1) + theme_minimal() + xlab('Month')
+
+p7=ggdraw(p7) + 
+  draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
+print(p7)
+
+ggsave('c:\\Users\\marti\\Documents\\ASAM2020\\SubareaCVByMonth.png')
+
+```
+
+
+## Unweighted average and variance
+```{r unwtAvg}
+summaryStatTime=dat %>% group_by(SubareaF) %>% summarise(n=n(),
+  start=min(`Year (yyyy)`),
+  end=max(`Year (yyyy)`),
+  mean=mean(`Density estimate (g m-2)`),
+  var=sqrt(sum(Var)),
+  SD=sqrt(var),
+  CV=SD/mean)
+
+```
+
+
+```{r summaryStatTime,echo=FALSE}
+knitr::kable(summaryStatTime,caption='Summary statistics for each time series using unweighted observations.')
+```
