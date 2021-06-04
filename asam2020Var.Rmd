@@ -28,8 +28,8 @@ Load data and user defined variables:
 To load the time series data from excel put all the data files in one directory.  The directory is specified in the following code chunk ```data.files$wd```.
 
 ```{r usrVar}
+
 data.files=list(
-wd='c:\\Users\\marti\\Documents\\ASAM2020\\data\\', 
 meta=tibble(locName=c('SG',
                       'SO',
                       'WAP',
@@ -82,7 +82,13 @@ dat[[1]]=dat[[1]][,-c(23,24)]
 Now we merge the data together into a single ```R``` object:
 
 ```{r mergeDat}
-dat=do.call('rbind.data.frame',dat)
+### change SO to numeric
+dat$SO$`Density estimate (g m-2)` <- as.numeric(dat$SO$`Density estimate (g m-2)`)
+dat$SO$`Survey area (km2)` <- as.numeric(dat$SO$`Survey area (km2)`)
+
+
+#dat=do.call('rbind.data.frame',dat)
+dat =  dplyr::bind_rows(dat)
 nall=nrow(dat) #number of surveys
 
 ```
@@ -251,7 +257,8 @@ p5=ggdraw(p4) +
   draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
 print(p5)
 
-ggsave('c:\\Users\\marti\\Documents\\ASAM2020\\SubareaLogNormal95pcConfidence.png')
+ggsave('SubareaLogNormal95pcConfidence.png')
+
 ```
 ## Changes in CV with month and equipment
 Krill behaviour, e.g. swarming and environmental preference, will influence CV,i.e. evenly spaced krill will reduce CV, whereas a single massive 'super' swarm will greatly increase CV.  It is reasonable to see if CV changes with observation month, so we take a look at the in Fig. \@ref(fig:CVmonth).
@@ -269,7 +276,8 @@ p6=ggdraw(p6) +
   draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
 print(p6)
 
-ggsave('c:\\Users\\marti\\Documents\\ASAM2020\\SubareaCVByMonth.png')
+ggsave('SubareaCVByMonth.png')
+
 ```
 
 And now by Echosounder:
@@ -286,8 +294,7 @@ p7=ggdraw(p7) +
   draw_label("Draft", color = "grey", size = 110, angle = 45,alpha=0.5)
 print(p7)
 
-ggsave('c:\\Users\\marti\\Documents\\ASAM2020\\SubareaCVByMonth.png')
-
+ggsave('SubareaCVByMonth.png')
 ```
 
 
