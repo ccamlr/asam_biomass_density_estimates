@@ -37,3 +37,6 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# Files that are not used and shouldn't be in the repository
+NotUsed/

@@ -10,5 +10,5 @@ At the moment there are two scripts, built to address priority work indentified 
 
 - The script _asam2020Var.Rmd_ is focused on uncertainty estimates. 
 
-- The script _ASAM_2021_KrillBiomassStats.Rmd_ is focused on mean estimates. The filtered data is available here: https://groups.ccamlr.org/node/524
+- The script _02.ASAM_2021_KrillBiomassStatsVx.Rmd_ is focused on mean estimates. The filtered data is available here: https://groups.ccamlr.org/node/524
 
